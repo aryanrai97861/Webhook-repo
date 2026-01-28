@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Events Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                    <h1>GitHub Events</h1>
+                </div>
+                <div class="status-indicator">
+                    <span class="pulse"></span>
+                    <span id="status-text">Live</span>
+                </div>
+            </div>
+            <p class="subtitle">Real-time repository activity feed • Auto-refreshes every 15 seconds</p>
+        </header>
+
+        <main>
+            <div class="refresh-info">
+                <span>Next refresh in: <strong id="countdown">15</strong>s</span>
+                <button id="refresh-btn" class="refresh-btn" onclick="fetchEvents()">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                    </svg>
+                    Refresh Now
+                </button>
+            </div>
+
+            <div id="events-container" class="events-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading events...</p>
+                </div>
+            </div>
+
+            <div id="empty-state" class="empty-state" style="display: none;">
+                <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                <h3>No events yet</h3>
+                <p>Push, create a pull request, or merge to see events appear here.</p>
+            </div>
+        </main>
+
+        <footer>
+            <p>Webhook Receiver • Polling MongoDB every 15 seconds</p>
+        </footer>
+    </div>
+
+    <script>
+        let countdown = 15;
+        let countdownInterval;
+
+        function formatEventMessage(event) {
+            const author = `<span class="author">"${event.author}"</span>`;
+            const fromBranch = `<span class="branch">"${event.from_branch}"</span>`;
+            const toBranch = `<span class="branch">"${event.to_branch}"</span>`;
+            const timestamp = `<span class="timestamp">${event.timestamp}</span>`;
+
+            switch(event.action) {
+                case 'PUSH':
+                    return `${author} pushed to ${toBranch} on ${timestamp}`;
+                case 'PULL_REQUEST':
+                    return `${author} submitted a pull request from ${fromBranch} to ${toBranch} on ${timestamp}`;
+                case 'MERGE':
+                    return `${author} merged branch ${fromBranch} to ${toBranch} on ${timestamp}`;
+                default:
+                    return `${author} performed ${event.action} on ${timestamp}`;
+            }
+        }
+
+        function getEventIcon(action) {
+            switch(action) {
+                case 'PUSH':
+                    return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 19V5M5 12l7-7 7 7"/>
+                    </svg>`;
+                case 'PULL_REQUEST':
+                    return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/>
+                        <path d="M13 6h3a2 2 0 012 2v7M6 9v12"/>
+                    </svg>`;
+                case 'MERGE':
+                    return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+                        <path d="M6 9v6M18 9a9 9 0 01-9 9"/>
+                    </svg>`;
+                default:
+                    return `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                        <circle cx="12" cy="12" r="4"/>
+                    </svg>`;
+            }
+        }
+
+        function renderEvents(events) {
+            const container = document.getElementById('events-container');
+            const emptyState = document.getElementById('empty-state');
+
+            if (events.length === 0) {
+                container.style.display = 'none';
+                emptyState.style.display = 'flex';
+                return;
+            }
+
+            container.style.display = 'block';
+            emptyState.style.display = 'none';
+
+            container.innerHTML = events.map(event => `
+                <div class="event-card ${event.action.toLowerCase()}">
+                    <div class="event-icon ${event.action.toLowerCase()}">
+                        ${getEventIcon(event.action)}
+                    </div>
+                    <div class="event-content">
+                        <div class="event-badge ${event.action.toLowerCase()}">${event.action}</div>
+                        <p class="event-message">${formatEventMessage(event)}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function fetchEvents() {
+            const statusText = document.getElementById('status-text');
+            const refreshBtn = document.getElementById('refresh-btn');
+            
+            try {
+                statusText.textContent = 'Fetching...';
+                refreshBtn.disabled = true;
+                
+                const response = await fetch('/api/events');
+                const data = await response.json();
+                
+                if (data.events) {
+                    renderEvents(data.events);
+                }
+                
+                statusText.textContent = 'Live';
+            } catch (error) {
+                console.error('Error fetching events:', error);
+                statusText.textContent = 'Error';
+            } finally {
+                refreshBtn.disabled = false;
+                resetCountdown();
+            }
+        }
+
+        function resetCountdown() {
+            countdown = 15;
+            document.getElementById('countdown').textContent = countdown;
+        }
+
+        function startCountdown() {
+            countdownInterval = setInterval(() => {
+                countdown--;
+                document.getElementById('countdown').textContent = countdown;
+                
+                if (countdown <= 0) {
+                    fetchEvents();
+                }
+            }, 1000);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchEvents();
+            startCountdown();
+        });
+    </script>
+</body>
+</html>
